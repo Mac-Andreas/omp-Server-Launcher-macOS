@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4658"/>
+      <stop offset="1" stop-color="#1F2630"/>
+    </linearGradient>
+    <linearGradient id="rack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5B9BD5"/>
+      <stop offset="1" stop-color="#3D7CB8"/>
+    </linearGradient>
+    <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34D27B"/>
+      <stop offset="1" stop-color="#1FA85C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <!-- two stacked server units -->
+  <rect x="232" y="250" width="560" height="158" rx="26" fill="url(#rack)"/>
+  <rect x="232" y="446" width="560" height="158" rx="26" fill="url(#rack)"/>
+  <circle cx="300" cy="329" r="24" fill="#0FE38A"/>
+  <circle cx="300" cy="525" r="24" fill="#0FE38A"/>
+  <rect x="560" y="307" width="160" height="44" rx="13" fill="#1B2430" opacity="0.5"/>
+  <rect x="560" y="503" width="160" height="44" rx="13" fill="#1B2430" opacity="0.5"/>
+  <!-- launch / play badge -->
+  <circle cx="640" cy="708" r="120" fill="url(#play)"/>
+  <path d="M604 654 L716 708 L604 762 Z" fill="#FFFFFF"/>
+</svg>

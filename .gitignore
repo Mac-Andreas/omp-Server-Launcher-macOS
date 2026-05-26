@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Swift / SPM build output
+.build/
+.swiftpm/
+dist/
+*.xcodeproj
+
+# Supabase — kept local only, not on GitHub (function is deployed; app doesn't
+# need this folder). Lives on disk for redeploys/reference.
+supabase/
+
+# Local-only docs
+CLAUDE.md
+To-Do.md
+.env.example
+STATUS.md
+
+# macOS
+.DS_Store
+._*
