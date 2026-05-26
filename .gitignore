@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# C++ / CMake build output
+build/
+build-new/
+dist/
+
+# Swift / SPM build output
+swift-launcher/.build/
+swift-launcher/.swiftpm/
+swift-launcher/dist/
+swift-launcher/*.xcodeproj
+
+# Supabase CLI local state (link metadata, connection URLs — env-specific)
+swift-launcher/supabase/.temp/
+swift-launcher/supabase/.branches/
+**/supabase/.temp/
+
+# macOS
+.DS_Store
+._*
