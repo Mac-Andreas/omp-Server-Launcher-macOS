@@ -27,6 +27,19 @@ capable Wine runtime, so **no CrossOver is required**.
 The whole UI shares one consistent layout: every tab has the same header, scope
 picker and footer-action bands.
 
+## Screenshots
+
+| | |
+|---|---|
+| **Server — macOS** | **Server — Windows-32 (via Wine)** |
+| ![macOS servers](screenshots/server-macos.png) | ![Windows-32 servers via Wine](screenshots/server-windows.png) |
+| **Server — live log** | **Setup — Wine runtime** |
+| ![Live server log](screenshots/server-running.png) | ![Wine runtime setup](screenshots/setup-wine.png) |
+| **Config editor** | **Bans** |
+| ![Config editor](screenshots/config.png) | ![Bans list](screenshots/bans.png) |
+| **Snapshots** | **Settings** |
+| ![Log snapshots](screenshots/snapshots.png) | ![Storage settings](screenshots/settings.png) |
+
 ## How it works
 
 Servers live in their own folders under
