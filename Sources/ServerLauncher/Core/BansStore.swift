@@ -21,7 +21,12 @@ final class BansStore: ObservableObject {
 
     func load() {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: path), let data = fm.contents(atPath: path) else {
+        // Create an empty bans.json on first look so the server (and this view)
+        // always have a file to work with — no "not found" state.
+        if !fm.fileExists(atPath: path), !ServerEnv.serverDir.isEmpty {
+            _ = save()
+        }
+        guard let data = fm.contents(atPath: path) else {
             exists = false
             bans = []
             return

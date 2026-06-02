@@ -22,3 +22,6 @@ STATUS.md
 # macOS
 .DS_Store
 ._*
+
+# Internal docs (local only)
+/docs/

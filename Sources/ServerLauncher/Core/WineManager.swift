@@ -37,7 +37,7 @@ final class WineManager: ObservableObject {
 
     private var appSupport: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("open.mp Server Launcher", isDirectory: true)
+            .appendingPathComponent("Server Manager", isDirectory: true)
     }
     private var archiveURL: URL { appSupport.appendingPathComponent("wine-\(Self.wineVersion).tar.xz") }
     private var runtimeDir: URL { appSupport.appendingPathComponent("wine", isDirectory: true) }
@@ -62,6 +62,20 @@ final class WineManager: ObservableObject {
 
     // MARK: Download
 
+    /// One-tap setup: download (if needed) then extract/install automatically.
+    func downloadAndInstall() {
+        switch state {
+        case .notInstalled:
+            autoInstallAfterDownload = true
+            download()
+        case .downloaded:
+            install()
+        default:
+            break
+        }
+    }
+    private var autoInstallAfterDownload = false
+
     func download() {
         guard case .notInstalled = state else { return }
         state = .downloading(0)
@@ -80,7 +94,13 @@ final class WineManager: ObservableObject {
             do {
                 try? FileManager.default.removeItem(at: dest)
                 try FileManager.default.moveItem(at: tmp, to: dest)
-                Task { @MainActor in self?.state = .downloaded }
+                Task { @MainActor in
+                    self?.state = .downloaded
+                    if self?.autoInstallAfterDownload == true {
+                        self?.autoInstallAfterDownload = false
+                        self?.install()
+                    }
+                }
             } catch {
                 let msg = error.localizedDescription
                 Task { @MainActor in self?.state = .failed(msg) }

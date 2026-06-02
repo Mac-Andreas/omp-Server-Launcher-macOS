@@ -7,50 +7,132 @@ import AppKit
 
 struct LogsView: View {
     @EnvironmentObject private var snapshots: SnapshotStore
+    @EnvironmentObject private var servers: ServersStore
+    @EnvironmentObject private var registry: ControllerRegistry
     @State private var expanded: Set<String> = []
+    @State private var showDeleteAll = false
+    // Platform tab scope, matching the Server tab.
+    @State private var platform: ServerPlatform = .macos
+    // Server filter within the platform: nil = all of that platform's snapshots;
+    // otherwise the id of the live server whose snapshots to show.
+    @State private var filterID: UUID?
+    // True while the scope picker's dropdown is open (raises it over the list).
+    @State private var pickerOpen = false
+
+    // Live servers of the selected platform (the dropdown's rows — same source as
+    // the Bans/Config pickers, so the dropdown is a 1:1 match).
+    private var platformServers: [ServerInstance] { servers.servers(for: platform) }
+    // The server name the filter resolves to (nil ⇒ "All servers").
+    private var filterName: String? {
+        platformServers.first { $0.id == filterID }?.displayName
+    }
+
+    // Snapshots belonging to the selected platform. A snapshot is matched to a
+    // platform by its server name (via the current server list); snapshots whose
+    // server no longer exists ("unknown") are shown under every platform so they
+    // aren't hidden.
+    private func platformOf(_ name: String) -> ServerPlatform? {
+        servers.servers.first { $0.displayName == name }?.platform
+    }
+    private var platformSnapshots: [LogSnapshot] {
+        snapshots.snapshots.filter {
+            let p = platformOf($0.server)
+            return p == nil || p == platform
+        }
+    }
+
+    private var visibleSnapshots: [LogSnapshot] {
+        guard let name = filterName else { return platformSnapshots }
+        return platformSnapshots.filter { $0.server == name }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(Theme.border)
+        PageScaffold(
+            scopeFloating: true,
+            scope: { filterBar },
+            footer: {
+                PageFooterBar(items: [
+                    .init(title: "Delete all", icon: "trash", tint: Theme.bad,
+                          enabled: !snapshots.snapshots.isEmpty,
+                          action: { showDeleteAll = true }),
+                ])
+                .popover(isPresented: $showDeleteAll) { deleteAllConfirm }
+            }
+        ) {
             if snapshots.snapshots.isEmpty {
                 empty
+            } else if visibleSnapshots.isEmpty {
+                emptyFilter
             } else {
                 list
             }
         }
+        // Reset the per-server filter when switching platform tabs.
+        .onChange(of: platform) { _, _ in filterID = nil }
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.accent)
-            Text("Session snapshots").font(.system(size: 15, weight: .bold))
-            Spacer()
-            Button("Reload") { snapshots.reload() }
-                .buttonStyle(PillButtonStyle(kind: .secondary))
-            Button("Clear all") { snapshots.deleteAll(); expanded.removeAll() }
-                .buttonStyle(PillButtonStyle(kind: .danger))
-                .disabled(snapshots.snapshots.isEmpty)
+    // Platform tabs + the SAME server-scope picker used on the Bans/Config tabs
+    // (1:1) — with an extra "All servers" row at the top. Selecting "All" clears
+    // the filter; selecting a server filters to its snapshots.
+    private var filterBar: some View {
+        VStack(spacing: 0) {
+            FlushTabBar(
+                tabs: ServerPlatform.allCases.map { ($0, $0.label) },
+                selection: $platform)
+            ConfigScopePicker(
+                servers: platformServers,
+                selectedID: $filterID,
+                running: { inst in registry.controller(for: inst).isRunning },
+                isOpen: $pickerOpen,
+                flush: true,
+                allLabel: "All servers")
+            .frame(maxWidth: .infinity)
+            .zIndex(100)   // float the open menu over the snapshot list below
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
+    }
+
+    private var deleteAllConfirm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Delete all snapshots?").font(.system(size: 13, weight: .bold))
+            Text("This permanently removes every saved session log. This can’t be undone.")
+                .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+            HStack {
+                Spacer()
+                Button("Cancel") { showDeleteAll = false }
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+                Button("Delete all") {
+                    snapshots.deleteAll(); expanded.removeAll(); showDeleteAll = false
+                }
+                .buttonStyle(PillButtonStyle(kind: .danger))
+            }
+        }
+        .padding(16).frame(width: 300)
     }
 
     private var empty: some View {
         VStack(spacing: 8) {
-            Spacer()
             Image(systemName: "tray").font(.system(size: 36)).foregroundStyle(Theme.textDim)
-            Text("No snapshots yet.").foregroundStyle(Theme.textDim)
+            Text("No snapshots yet.").font(.system(size: 14, weight: .semibold))
             Text("A snapshot is saved automatically each time the server stops.")
                 .font(.system(size: 11)).foregroundStyle(Theme.textDim)
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyFilter: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray").font(.system(size: 36)).foregroundStyle(Theme.textDim)
+            Text("No snapshots for this server.").font(.system(size: 14, weight: .semibold))
+            Button("Show all servers") { filterID = nil }
+                .buttonStyle(PillButtonStyle(kind: .secondary))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                ForEach(snapshots.snapshots) { snap in
+                ForEach(visibleSnapshots) { snap in
                     SnapshotRow(
                         snap: snap,
                         isExpanded: expanded.contains(snap.id),
@@ -98,7 +180,13 @@ private struct SnapshotRow: View {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.title(snap.created)).font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 8) {
+                        Text(snap.server.isEmpty ? "Unknown server" : snap.server)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        Text(Self.title(snap.created))
+                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    }
                     Text("\(snap.lineCount) lines").font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 }
                 Spacer()
@@ -106,10 +194,10 @@ private struct SnapshotRow: View {
                     .buttonStyle(PillButtonStyle(kind: .secondary))
                 Button("Save") { onSave() }
                     .buttonStyle(PillButtonStyle(kind: .secondary))
-                Button(role: .destructive) { onDelete() } label: { Image(systemName: "trash") }
-                    .buttonStyle(.plain).foregroundStyle(Theme.bad)
+                HoldToConfirmIcon(help: "Press and hold to delete this snapshot.") { onDelete() }
             }
             .contentShape(Rectangle())
+            .pointerCursor()   // whole row is clickable to expand/collapse
             .onTapGesture { toggle() }
 
             if isExpanded {

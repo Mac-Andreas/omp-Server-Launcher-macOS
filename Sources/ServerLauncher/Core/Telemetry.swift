@@ -32,6 +32,13 @@ final class Telemetry: ObservableObject {
         static let extended = "TelemetryExtended"
         static let consentAsked = "TelemetryConsentAsked"
         static let anonymousId = "TelemetryAnonymousId"
+        // Local daily-aggregate bucket (see Daily aggregation below).
+        static let aggTabViews   = "TelemetryAggTabViews"     // [String:Int]
+        static let aggActions    = "TelemetryAggActions"      // [String:Int]
+        static let aggLaunches   = "TelemetryAggLaunches"     // Int
+        static let aggForeground = "TelemetryAggForegroundSeconds" // Double
+        static let aggBucketDay  = "TelemetryAggBucketDay"    // yyyy-MM-dd the bucket belongs to
+        static let lastFlushDay  = "TelemetryAggLastFlushDay" // yyyy-MM-dd last pushed
     }
 
     init() {
@@ -120,5 +127,108 @@ final class Telemetry: ObservableObject {
             return String(cString: ptr)
         }
         return machine  // "arm64" | "x86_64"
+    }
+
+    // MARK: - Daily aggregation
+    //
+    // Instead of POSTing one event per click/tab-switch (noisy, and a privacy
+    // footprint), the app counts UI interactions LOCALLY into a per-day bucket in
+    // UserDefaults, then pushes a single `daily_aggregate` event at most once per
+    // day (on launch, when a calendar day has elapsed since the last push). The
+    // server stores the rolled-up counts; no per-interaction timing ever leaves
+    // the device. This mirrors the open.mp Launcher's averaging approach.
+
+    private var today: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: Date())
+    }
+
+    /// Roll the bucket over to today if it belongs to an earlier day, discarding
+    /// any stale partial counts that were never flushed (best-effort telemetry).
+    private func ensureBucketIsToday() {
+        if defaults.string(forKey: Keys.aggBucketDay) != today {
+            defaults.set(today, forKey: Keys.aggBucketDay)
+            defaults.removeObject(forKey: Keys.aggTabViews)
+            defaults.removeObject(forKey: Keys.aggActions)
+            defaults.set(0, forKey: Keys.aggLaunches)
+            defaults.set(0.0, forKey: Keys.aggForeground)
+        }
+    }
+
+    private func bump(_ key: String, name: String, by n: Int = 1) {
+        guard enabled else { return }
+        ensureBucketIsToday()
+        var dict = (defaults.dictionary(forKey: key) as? [String: Int]) ?? [:]
+        dict[name, default: 0] += n
+        defaults.set(dict, forKey: key)
+    }
+
+    /// Record that a sidebar tab / page was opened.
+    func recordTab(_ name: String) { bump(Keys.aggTabViews, name: name) }
+
+    /// Record a UI action click (start/stop/save/install/delete/…).
+    func recordAction(_ name: String) { bump(Keys.aggActions, name: name) }
+
+    /// Record an app launch (count) for the day.
+    func recordLaunch() {
+        guard enabled else { return }
+        ensureBucketIsToday()
+        defaults.set(defaults.integer(forKey: Keys.aggLaunches) + 1, forKey: Keys.aggLaunches)
+    }
+
+    /// Add foreground time (seconds) to the day's total — call when the app
+    /// resigns active / quits with the elapsed active interval.
+    func addForegroundTime(_ seconds: Double) {
+        guard enabled, seconds > 0 else { return }
+        ensureBucketIsToday()
+        let total = defaults.double(forKey: Keys.aggForeground) + seconds
+        defaults.set(total, forKey: Keys.aggForeground)
+    }
+
+    /// Push the day's aggregate at most once per day. Call on launch (after the
+    /// app's stores are loaded so `serverCounts` is accurate). If the last push
+    /// was today, this is a no-op. `serverCounts` is a daily snapshot (e.g.
+    /// ["macos": 3, "windows": 1]).
+    func flushDailyIfNeeded(serverCounts: [String: Int]) {
+        guard canSend else { return }
+        // Already pushed today? Nothing to do.
+        if defaults.string(forKey: Keys.lastFlushDay) == today { return }
+
+        let tabViews = (defaults.dictionary(forKey: Keys.aggTabViews) as? [String: Int]) ?? [:]
+        let actions  = (defaults.dictionary(forKey: Keys.aggActions) as? [String: Int]) ?? [:]
+        let launches = defaults.integer(forKey: Keys.aggLaunches)
+        let fg       = defaults.double(forKey: Keys.aggForeground)
+        let bucketDay = defaults.string(forKey: Keys.aggBucketDay) ?? today
+
+        // Avg foreground per launch (the app calculates the average; only the
+        // rolled-up numbers are sent, never individual sessions).
+        let avgSessionSeconds = launches > 0 ? fg / Double(launches) : 0
+
+        // Only push if there's something to report (avoids empty daily rows).
+        let hasData = !tabViews.isEmpty || !actions.isEmpty || launches > 0
+        if !hasData {
+            defaults.set(today, forKey: Keys.lastFlushDay)
+            return
+        }
+
+        send("daily_aggregate", properties: [
+            "bucket_day": bucketDay,
+            "tab_views": tabViews,
+            "actions": actions,
+            "launches": launches,
+            "foreground_seconds": Int(fg.rounded()),
+            "avg_session_seconds": Int(avgSessionSeconds.rounded()),
+            "server_counts": serverCounts,
+        ])
+
+        // Mark pushed + start a fresh bucket for the new day.
+        defaults.set(today, forKey: Keys.lastFlushDay)
+        defaults.removeObject(forKey: Keys.aggTabViews)
+        defaults.removeObject(forKey: Keys.aggActions)
+        defaults.set(0, forKey: Keys.aggLaunches)
+        defaults.set(0.0, forKey: Keys.aggForeground)
+        defaults.set(today, forKey: Keys.aggBucketDay)
     }
 }

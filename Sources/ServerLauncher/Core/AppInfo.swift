@@ -7,15 +7,15 @@ import Foundation
 enum AppInfo {
     /// Bump on each release; the update check compares this to the latest
     /// GitHub release tag.
-    static let version = "1.0.0"
+    static let version = "2.0.0"
 
     /// Display name (window title, About, telemetry `source`).
-    static let displayName = "open.mp Server Launcher"
+    static let displayName = "Open Multiplayer — Server Manager"
 
     /// GitHub repo to check for releases.
     /// https://api.github.com/repos/<owner>/<repo>/releases/latest
     static let updateOwner = "Mac-Andreas"
-    static let updateRepo  = "open.mp-Server-Launcher-macOS"
+    static let updateRepo  = "omp-Server-Manager-macOS"
 
     /// Browser URL for the repository (footer link).
     static var repositoryURL: URL {
